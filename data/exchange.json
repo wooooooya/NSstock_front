@@ -1,0 +1,28 @@
+{
+  "code": "SU",
+  "message": "Success",
+  "exchangeRate": {
+    "exchangePreviousClose": {
+      "price": 1369,
+      "indecrease": -3,
+      "percentage": -0.26
+    },
+    "exchangeChat": [
+      { "echat": 1420, "edate": "2025-05-14" },
+      { "echat": 1394, "edate": "2025-05-15" },
+      { "echat": 1389, "edate": "2025-05-16" },
+      { "echat": 1397, "edate": "2025-05-19" },
+      { "echat": 1392, "edate": "2025-05-20" },
+      { "echat": 1387, "edate": "2025-05-21" },
+      { "echat": 1381, "edate": "2025-05-22" },
+      { "echat": 1375, "edate": "2025-05-23" },
+      { "echat": 1364, "edate": "2025-05-26" },
+      { "echat": 1369, "edate": "2025-05-27" },
+      { "echat": 1376, "edate": "2025-05-28" },
+      { "echat": 1375, "edate": "2025-05-29" },
+      { "echat": 1380, "edate": "2025-05-30" },
+      { "echat": 1373, "edate": "2025-06-02" },
+      { "echat": 1369, "edate": "2025-06-04" }
+    ]
+  }
+}

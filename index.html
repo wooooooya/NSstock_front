@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextStep 주식예측 - 메인</title>
+  <link rel="stylesheet" href="style.css" /> 
+</head>
+<body>
+  <!-- 오른쪽 상단 고정 시간 알림창 -->
+  <div id="timeNotification" class="time-notification"></div>
+
+  <div class="container">
+    <!-- 좌측 사이드바 -->
+    <aside class="sidebar">
+      <img src="nextstep_logo.jpg" alt="NextStep 로고" class="logo" />
+      <nav class="menu-top">
+        <a href="index.html" class="menu-item active">메인</a>
+        <a href="nextpage.html" class="menu-item">주식예측</a>
+      </nav>
+      <nav class="menu-bottom">
+        <a href="#" class="menu-item">환경설정</a>
+        <a href="#" class="menu-item">로그아웃</a>
+      </nav>
+    </aside>
+
+    <!-- 메인 타이틀명 영역 -->
+    <main class="main-content">
+      <h1 class="page-title">메인</h1>
+
+    <!-- 위젯 박스 3개 -->
+    <div class="widget-container">
+      <div class="widget" id="kospi-widget">
+        <h2>코스피</h2>
+        <p class="subtitle">전일 대비 종가</p>
+        <p class="price" id="kospi-price">-</p>
+        <div class="chart-container"></div> <!-- 그래프 위치 -->
+      </div>
+
+      <div class="widget" id="exchange-widget">
+        <h2>환율</h2>
+        <p class="subtitle">환율 전일 종가</p>
+        <p class="price" id="exchange-price">-</p>
+        <div class="chart-container"></div> <!-- 그래프 위치 -->
+      </div>
+
+      <div class="widget" id="oil-widget">
+        <h2>유가</h2>
+        <p class="subtitle">유가 전일 종가</p>
+        <p class="price" id="oil-price">-</p>
+        <div class="chart-container"></div> <!-- 그래프 위치 -->
+      </div>
+    </div>
+
+      <!-- 거래량 표 -->
+      <div class="volume-table">
+        <h2>거래량</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>종목</th>
+              <th>거래량</th>
+              <th>대비</th>
+              <th>등락률(%)</th>
+            </tr>
+          </thead>
+          <tbody id="volume-body">
+            <!-- JS에서 동적으로 채움 -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
