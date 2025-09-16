@@ -5,7 +5,7 @@
 
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    const res = await fetch('http://localhost:4001/stock/prediction');
+    const res = await fetch('http://localhost:4002/stock/prediction');
     if (!res.ok) throw new Error('Prediction API 오류');
     const data = await res.json();
 

@@ -171,7 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadChartDataFromResponse('oil-widget', 'data/oil.json', 'ochat'); // 실제 키 확인 필요
 
   // 백엔드 API 호출
-  fetch("http://localhost:4001/stock/main")
+  fetch("http://localhost:4002/stock/main")
     .then((response) => response.json())
     .then((data) => {
       if (data.code === "SU") {
