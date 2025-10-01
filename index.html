@@ -1,77 +1,984 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextStep 주식예측 - 메인</title>
-  <link rel="stylesheet" href="style.css" /> 
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextStep - AI 주식 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <style>
+        /* Google Fonts Import */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f8f9fa; /* 밝은 회색 배경으로 변경 */
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #868e96; }
+
+        
+        /* Page transition effect */
+        .page-content { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Active state for buttons */
+        .btn-active:active { transform: scale(0.97); transition: transform 0.1s; }
+
+        .chart-container { position: relative; min-height: 450px; width: 100%; overflow: hidden; } /* overflow: hidden 추가 */
+        .stock-row { cursor: pointer; }
+        
+        /* Draggable widget styles */
+        .widget.dragging { opacity: 0.5; border: 2px dashed #0d6efd; }
+        .widget.drag-over { transform: scale(1.02); box-shadow: 0 0 15px rgba(13, 110, 253, 0.3); }
+
+        /* Tooltip for AI explanation & Indicators */
+        .tooltip-container { position: relative; display: inline-block; }
+        .tooltip-text { visibility: hidden; width: 250px; background-color: #343a40; color: #fff; text-align: left; border-radius: 6px; padding: 8px; position: absolute; z-index: 51; bottom: 125%; left: 50%; margin-left: -125px; opacity: 0; transition: opacity 0.3s; font-size: 12px; font-weight: normal; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
+
+        /* --- 튜토리얼 스타일 변경 --- */
+        .tutorial-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            pointer-events: none; /* 오버레이는 클릭 이벤트를 받지 않음 */
+        }
+        .tutorial-highlight {
+            position: relative;
+            z-index: 1001; /* 오버레이보다 위에 위치 */
+            pointer-events: auto; /* 하이라이트된 요소는 클릭 가능 */
+            border-radius: 8px;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.7); /* 파란색 테두리로 강조 */
+            transition: all 0.3s ease-in-out;
+        }
+        
+        /* Tutorial Modal Animation */
+        .tutorial-modal-content {
+            animation: slideUp 0.4s ease-out;
+            pointer-events: auto; /* 튜토리얼 설명 박스는 클릭 가능해야 함 (종료 버튼) */
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .apexcharts-tooltip {
+            background: #ffffff;
+            color: #333;
+            border: 1px solid #e0e0e0;
+        }
+        .apexcharts-tooltip.apexcharts-theme-light .apexcharts-tooltip-title {
+             background: #f7f7f7;
+             border-bottom: 1px solid #e0e0e0;
+        }
+
+    </style>
 </head>
-<body>
-  <!-- 오른쪽 상단 고정 시간 알림창 -->
-  <div id="timeNotification" class="time-notification"></div>
+<body class="text-gray-800">
 
-  <div class="container">
-    <!-- 좌측 사이드바 -->
-    <aside class="sidebar">
-      <img src="nextstep_logo.jpg" alt="NextStep 로고" class="logo" />
-      <nav class="menu-top">
-        <a href="index.html" class="menu-item active">메인</a>
-        <a href="nextpage.html" class="menu-item">주식예측</a>
-      </nav>
-      <nav class="menu-bottom">
-        <a href="#" class="menu-item">환경설정</a>
-        <a href="#" class="menu-item">로그아웃</a>
-      </nav>
-    </aside>
+    <div id="app" class="flex flex-col min-h-screen"></div>
+    <div id="modal-container"></div>
+    <div id="tutorial-container"></div>
 
-    <!-- 메인 타이틀명 영역 -->
-    <main class="main-content">
-      <h1 class="page-title">메인</h1>
+    <script type="module">
+        // ===================================================================================
+        // MOCK DATA (백엔드 API 모의 데이터)
+        // ===================================================================================
+        const mockApi = {
+            login: (username, password) => {
+                if (username === 'test' && password === 'test1234') {
+                    // --- 수정: 하드코딩된 '테스터' 대신 입력받은 username을 사용 ---
+                    return Promise.resolve({ accessToken: 'mock-jwt-token-string', user: { email: 'test@nextstep.com', username: username } });
+                }
+                return Promise.reject({ message: '아이디 또는 비밀번호가 올바르지 않습니다.' });
+            },
+            getKospiStocks: (includeTutorialStock = false) => {
+                 const stocks = [
+                    { code: '005930', name: '삼성전자', price: 82600, change: 1200, changeRate: 1.47, volume: 17826381 },
+                    { code: '000660', name: 'SK하이닉스', price: 231000, change: -2500, changeRate: -1.07, volume: 4501378 },
+                    { code: '035420', name: 'NAVER', price: 170500, change: 800, changeRate: 0.47, volume: 987120 },
+                    { code: '035720', name: '카카오', price: 44200, change: -550, changeRate: -1.23, volume: 3251845 },
+                    { code: '207940', name: '삼성바이오로직스', price: 753000, change: 11000, changeRate: 1.48, volume: 158349 },
+                    { code: '005380', name: '현대차', price: 281500, change: 3000, changeRate: 1.08, volume: 789456 },
+                    { code: '005490', name: 'POSCO홀딩스', price: 378000, change: -5500, changeRate: -1.43, volume: 654321 },
+                    { code: '051910', name: 'LG화학', price: 367000, change: 6500, changeRate: 1.80, volume: 512345 },
+                ];
+                if (includeTutorialStock) {
+                     stocks.unshift({ code: 'TUTORIAL01', name: '넥스트스텝(예시)', price: 10000, change: 500, changeRate: 5.00, volume: 100000 });
+                }
+                return Promise.resolve(stocks);
+            },
+            getStockChartData: (stockCode) => {
+                const today = new Date();
+                const historicalData = [];
+                let lastClose = (stockCode === 'TUTORIAL01') ? 10000 : Math.random() * 200000 + 50000;
 
-    <!-- 위젯 박스 3개 -->
-    <div class="widget-container">
-      <div class="widget" id="kospi-widget">
-        <h2>코스피</h2>
-        <p class="subtitle">전일 대비 종가</p>
-        <p class="price" id="kospi-price">-</p>
-        <div class="chart-container"></div> <!-- 그래프 위치 -->
-      </div>
+                for (let i = 180; i > 0; i--) { // 6개월 데이터
+                    const date = new Date(today);
+                    date.setDate(today.getDate() - i);
+                    if (date.getDay() === 0 || date.getDay() === 6) continue;
+                    const open = lastClose * (1 + (Math.random() - 0.5) * 0.05);
+                    const high = Math.max(open, lastClose) * (1 + Math.random() * 0.03);
+                    const low = Math.min(open, lastClose) * (1 - Math.random() * 0.03);
+                    const close = low + Math.random() * (high - low);
+                    historicalData.push({ t: date.getTime(), o: open, h: high, l: low, c: close });
+                    lastClose = close;
+                }
+                
+                const predictionData = [];
+                let lastPrediction = historicalData.length > 0 ? historicalData[historicalData.length - 1].c : lastClose;
+                for (let i = 1; i <= 30; i++) { // 30일 예측
+                    const date = new Date();
+                    date.setDate(date.getDate() + i);
+                    const prediction = lastPrediction * (1 + (Math.random() - 0.45) * 0.03);
+                    predictionData.push({ time: date.getTime(), value: prediction });
+                    lastPrediction = prediction;
+                }
+                return Promise.resolve({ historicalData, predictionData });
+            },
+            getIndices: () => Promise.resolve({
+                kospi: { value: 2789.13, change: 15.77, changeRate: 0.57 },
+                gold: { price1kg: 115070000, price100g: 11550000 },
+                oil: { gasoline: 1712.5, diesel: 1547.8, kerosene: 1380.2 },
+            }),
+            getAiRecommendations: () => Promise.resolve([
+                { code: '000660', name: 'SK하이닉스', signal: '매수', confidence: 0.85, targetPrice: 250000 },
+                { code: '035720', name: '카카오', signal: '보유', confidence: 0.65, targetPrice: 46000 },
+                { code: '005490', name: 'POSCO홀딩스', signal: '매도', confidence: 0.78, targetPrice: 350000 },
+            ]),
+            getKospiHistory: (days) => {
+                const data = []; let lastValue = 2789; const today = new Date();
+                for(let i=days; i>0; i--){
+                    const date = new Date(today); date.setDate(today.getDate() - i);
+                    if (date.getDay() === 0 || date.getDay() === 6) continue;
+                    lastValue *= (1 + (Math.random() - 0.48) * 0.015);
+                    data.push({time: date.getTime(), value: lastValue});
+                }
+                return Promise.resolve(data);
+            },
+        };
 
-      <div class="widget" id="exchange-widget">
-        <h2>환율</h2>
-        <p class="subtitle">환율 전일 종가</p>
-        <p class="price" id="exchange-price">-</p>
-        <div class="chart-container"></div> <!-- 그래프 위치 -->
-      </div>
+        // ===================================================================================
+        // APPLICATION STATE
+        // ===================================================================================
+        const state = {
+            isLoggedIn: !!localStorage.getItem('nextstep-token'),
+            currentUser: JSON.parse(localStorage.getItem('nextstep-user')),
+            currentPage: 'home',
+            currentParams: null,
+            kospiStocks: [],
+            favorites: JSON.parse(localStorage.getItem('nextstep-favorites')) || ['005930', '035420'],
+            widgets: JSON.parse(localStorage.getItem('nextstep-widgets')) || [
+                { id: 'indices', type: 'indices', size: 'md:col-span-2' }, { id: 'kospiChart', type: 'kospiChart', size: 'md:col-span-2' },
+                { id: 'topVolume', type: 'topVolume', size: 'md:col-span-1' }, { id: 'favorites', type: 'favorites', size: 'md:col-span-1' },
+                { id: 'gold', type: 'gold', size: 'md:col-span-1' }, { id: 'oil', type: 'oil', size: 'md:col-span-1' }
+            ],
+            isWidgetEditMode: false,
+            domesticSort: { key: 'volume', order: 'desc' },
+            charts: {},
+            draggedWidgetId: null,
+            detailChartType: 'candlestick',
+            detailIndicators: { // 보조지표 상태 관리
+                sma20: false,
+            },
+            tutorial: {
+                isActive: false,
+                step: 0,
+            }
+        };
 
-      <div class="widget" id="oil-widget">
-        <h2>유가</h2>
-        <p class="subtitle">유가 전일 종가</p>
-        <p class="price" id="oil-price">-</p>
-        <div class="chart-container"></div> <!-- 그래프 위치 -->
-      </div>
-    </div>
+        // ===================================================================================
+        // UTILITY FUNCTIONS
+        // ===================================================================================
+        function formatKoreanDate(timestamp, format = 'long') {
+             const date = new Date(timestamp);
+             if (format === 'long') {
+                 return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+             }
+             return date.toLocaleDateString('ko-KR').slice(0, -1); // YYYY. MM. DD
+        }
 
-      <!-- 거래량 표 -->
-      <div class="volume-table">
-        <h2>거래량</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>종목</th>
-              <th>거래량</th>
-              <th>대비</th>
-              <th>등락률(%)</th>
-            </tr>
-          </thead>
-          <tbody id="volume-body">
-            <!-- JS에서 동적으로 채움 -->
-          </tbody>
-        </table>
-      </div>
-    </main>
-  </div>
+        function formatCurrency(value) {
+            return `${Math.round(value).toLocaleString('ko-KR')}원`;
+        }
+        
+        function calculateSMA(data, period) {
+            const smaData = [];
+            for (let i = period - 1; i < data.length; i++) {
+                const sum = data.slice(i - period + 1, i + 1).reduce((acc, val) => acc + val.y[3], 0); // y[3] is close price
+                smaData.push({
+                    x: data[i].x,
+                    y: sum / period
+                });
+            }
+            return smaData;
+        }
+        
+        // Inline SVG Icons
+        const icons = {
+            logo: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-blue-600">
+                        <path d="M21 8.5L12 3.5L3 8.5V15.5L12 20.5L21 15.5V8.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 14.5V20.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M21 8.5L12 14.5L3 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                   </svg>`,
+            eyeOpen: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>`,
+            eyeClosed: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88L6.59 6.59m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>`,
+            info: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+        };
+        
+        // ===================================================================================
+        // RENDER FUNCTIONS
+        // ===================================================================================
+        const appContainer = document.getElementById('app');
+        const modalContainer = document.getElementById('modal-container');
+        
+        function renderApp() {
+            if (!state.isLoggedIn) {
+                renderLoginPage();
+                return;
+            }
+            appContainer.innerHTML = `
+                <header id="app-header" class="bg-white shadow-sm sticky top-0 z-40 transition-colors duration-300"></header>
+                <main id="app-main" class="flex-grow container mx-auto p-4 md:p-6"></main>`;
+            renderPage();
+            
+            if (localStorage.getItem('nextstep-tutorial-completed') !== 'true' && !sessionStorage.getItem('tutorial-started')) {
+                renderWelcomeModal();
+                sessionStorage.setItem('tutorial-started', 'true');
+            }
+        }
 
-  <script src="script.js"></script>
+        function renderHeader() {
+            const header = document.getElementById('app-header');
+            if (!header) return;
+            const navLinks = [
+                { id: 'home', text: '홈' }, { id: 'domestic', text: '국내' }, { id: 'ai', text: 'AI 분석' }, { id: 'market', text: '시장지표' }, { id: 'my', text: 'MY' }
+            ];
+            const navItems = navLinks.map(link => `<a href="#" data-page="${link.id}" class="nav-link px-4 py-2 rounded-md text-base font-medium transition-colors ${state.currentPage === link.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}">${link.text}</a>`).join('');
+            header.innerHTML = `
+                <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                    <div class="flex items-center justify-between h-16">
+                        <div class="flex items-center">
+                            <a href="#" data-page="home" class="flex items-center space-x-2 nav-link">
+                                ${icons.logo}
+                                <span class="font-bold text-xl text-gray-800">NextStep</span>
+                            </a>
+                        </div>
+                        <nav class="hidden md:flex justify-center flex-grow">
+                            <div class="flex items-baseline space-x-4">${navItems}</div>
+                        </nav>
+                        <div class="flex items-center space-x-4">
+                            <span class="text-sm font-medium text-gray-700 hidden sm:block"><strong>${state.currentUser.username}</strong>님</span>
+                            <button id="logout-btn" class="text-sm font-medium text-gray-500 hover:text-blue-600 btn-active">로그아웃</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+        
+        function renderPage() {
+            Object.values(state.charts).forEach(chart => chart?.destroy());
+            state.charts = {};
+            const main = document.getElementById('app-main');
+            if (!main) return;
+            main.innerHTML = '<div class="page-content"></div>';
+            const pageContent = main.querySelector('.page-content');
+            
+            switch (state.currentPage) {
+                case 'home': renderHomePage(pageContent); break;
+                case 'domestic': renderDomesticPage(pageContent); break;
+                case 'ai': renderAiAnalysisPage(pageContent); break;
+                case 'market': renderMarketPage(pageContent); break;
+                case 'my': renderMyPage(pageContent); break;
+                default: renderHomePage(pageContent);
+            }
+            renderHeader();
+        }
+
+        // --- Auth & Welcome Modal ---
+        function renderLoginPage(error = null) {
+            appContainer.innerHTML = `<div class="min-h-screen flex items-center justify-center bg-gray-50"><div class="max-w-md w-full bg-white p-8 rounded-xl shadow-lg"><div class="flex justify-center mb-6">${icons.logo}<span class="text-2xl font-bold ml-2">NextStep</span></div><form id="login-form">${error ? `<p class="text-red-500 text-sm mb-4 text-center">${error}</p>` : ''}<div class="mb-4"><label for="username" class="block text-sm font-medium mb-1 text-gray-700">아이디</label><input type="text" id="username" required class="w-full px-3 py-2 border border-gray-300 rounded-md" value="test"></div><div class="mb-6 relative"><label for="password" class="block text-sm font-medium mb-1 text-gray-700">비밀번호</label><input type="password" id="password" required class="w-full px-3 py-2 border border-gray-300 rounded-md" value="test1234"><button type="button" id="password-toggle" class="absolute inset-y-0 right-0 top-6 pr-3 flex items-center text-sm leading-5 text-gray-500">${icons.eyeOpen}</button></div><button type="submit" class="w-full bg-blue-600 text-white py-2.5 rounded-md hover:bg-blue-700 transition-colors">로그인</button></form></div></div>`;
+        }
+
+        function renderWelcomeModal() {
+            modalContainer.innerHTML = `
+            <div id="welcome-modal" class="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                <div class="bg-white rounded-lg shadow-2xl p-8 max-w-lg w-full transform transition-all scale-95 opacity-0">
+                    <div class="text-center">
+                         <div class="flex justify-center items-center mb-4">${icons.logo} <span class="text-2xl font-bold ml-2">NextStep</span></div>
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">NextStep에 오신 것을 환영합니다!</h2>
+                        <p class="text-gray-600 mb-6">AI와 함께 스마트한 투자의 첫 걸음을 시작해보세요.</p>
+                    </div>
+                    <div class="space-y-3 text-left mb-8">
+                        <p class="text-gray-700 flex items-start"><span class="text-blue-500 mr-3 mt-1">📈</span><div><strong class="font-semibold">AI 예측 차트:</strong><br>AI가 분석한 미래 주가를 확인하고 투자 아이디어를 얻어보세요.</div></p>
+                        <p class="text-gray-700 flex items-start"><span class="text-yellow-500 mr-3 mt-1">⭐</span><div><strong class="font-semibold">나만의 위젯 보드:</strong><br>관심 종목, 주요 지표를 홈 화면에 배치하여 시장을 한눈에 파악하세요.</div></p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <button id="modal-tour-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg btn-active">가이드 시작하기</button>
+                        <button id="modal-skip-btn" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 px-4 rounded-lg btn-active">바로 시작하기</button>
+                    </div>
+                    <div class="mt-5 text-center">
+                        <label class="flex items-center justify-center text-sm text-gray-500 cursor-pointer"><input type="checkbox" id="modal-dont-show-again" class="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> 다시 보지 않기</label>
+                    </div>
+                </div>
+            </div>`;
+            const modalContent = modalContainer.querySelector('#welcome-modal > div');
+            setTimeout(() => { modalContent.style.transform = 'scale(1)'; modalContent.style.opacity = '1'; }, 50);
+        }
+
+        // --- Home Page ---
+        async function renderHomePage(container) {
+            const editButtonText = state.isWidgetEditMode ? '완료' : '위젯 편집';
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                    <h1 class="text-3xl font-bold text-gray-800">My Dashboard</h1>
+                     <div id="drag-guide" class="text-sm text-gray-500 font-medium hidden md:block">
+                         💡 편집 모드에서 위젯을 드래그하여 위치를 변경할 수 있습니다.
+                     </div>
+                    <button id="widget-edit-toggle" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg btn-active">${editButtonText}</button>
+                </div>
+                <div id="widget-grid" class="grid grid-cols-1 md:grid-cols-4 gap-6 auto-rows-fr"></div>
+                ${state.isWidgetEditMode ? renderAddWidgetPanel() : ''}`;
+            
+            const dragGuide = document.getElementById('drag-guide');
+            if (state.isWidgetEditMode && dragGuide) {
+                dragGuide.classList.add('text-blue-600', 'font-bold', 'animate-pulse');
+            }
+            await renderWidgets();
+        }
+        
+        function renderAddWidgetPanel() {
+            const allWidgets = [
+                { type: 'indices', name: '핵심 지표' }, { type: 'kospiChart', name: 'KOSPI 차트' },
+                { type: 'topVolume', name: '거래량 상위' }, { type: 'favorites', name: '즐겨찾기' },
+                { type: 'gold', name: '금 시세' }, { type: 'oil', name: '유가 정보' }
+            ];
+            const widgetButtons = allWidgets.map(w => {
+                const isAdded = state.widgets.some(sw => sw.type === w.type);
+                return `<button data-widget-type="${w.type}" class="add-widget-btn text-left p-3 rounded-lg ${isAdded ? 'bg-gray-200 cursor-not-allowed text-gray-500' : 'bg-gray-100 hover:bg-blue-100'}" ${isAdded ? 'disabled' : ''}><p class="font-semibold">${w.name}</p></button>`;
+            }).join('');
+            return `<div id="add-widget-panel" class="mt-8 bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-bold mb-4">위젯 추가하기</h3><div class="grid grid-cols-2 sm:grid-cols-4 gap-4">${widgetButtons}</div></div>`;
+        }
+
+        async function renderWidgets() {
+            const grid = document.getElementById('widget-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            
+            for (const widgetConfig of state.widgets) {
+                const widgetEl = document.createElement('div');
+                widgetEl.id = widgetConfig.id;
+                widgetEl.dataset.widgetType = widgetConfig.type;
+                widgetEl.className = `widget bg-white p-4 sm:p-6 rounded-xl shadow-md relative transition-transform flex flex-col ${widgetConfig.size || 'md:col-span-1'}`;
+                
+                if(state.isWidgetEditMode) {
+                    widgetEl.draggable = true;
+                    widgetEl.classList.add('cursor-move');
+                    widgetEl.innerHTML += `<button data-widget-id="${widgetConfig.id}" class="remove-widget-btn absolute -top-2 -right-2 bg-red-500 text-white rounded-full h-6 w-6 flex items-center justify-center font-bold text-xs z-10">&times;</button>`;
+                }
+
+                const contentContainer = document.createElement('div');
+                contentContainer.className = 'flex-grow';
+
+                switch (widgetConfig.type) {
+                    case 'indices': contentContainer.innerHTML = await renderIndicesWidget(); break;
+                    case 'kospiChart': contentContainer.innerHTML = renderKospiChartWidget(); break;
+                    case 'topVolume': contentContainer.innerHTML = renderTopVolumeWidget(); break;
+                    case 'favorites': contentContainer.innerHTML = await renderFavoritesWidget(); break;
+                    case 'gold': contentContainer.innerHTML = await renderGoldWidget(); break;
+                    case 'oil': contentContainer.innerHTML = await renderOilWidget(); break;
+                }
+                widgetEl.appendChild(contentContainer);
+                grid.appendChild(widgetEl);
+
+                if(widgetConfig.type === 'kospiChart') updateKospiChart(30);
+            }
+        }
+        
+        async function renderIndicesWidget() { const data = await mockApi.getIndices(); const changeClass = data.kospi.change > 0 ? 'text-red-500' : 'text-blue-500'; return `<h3 class="text-lg font-bold mb-4 border-b pb-2">KOSPI</h3><div class="text-center"><p class="text-3xl font-bold">${data.kospi.value.toFixed(2)}</p><p class="font-medium mt-1 ${changeClass}">${data.kospi.change > 0 ? '▲' : '▼'} ${Math.abs(data.kospi.change).toFixed(2)} (${data.kospi.changeRate.toFixed(2)}%)</p></div>`; }
+        async function renderGoldWidget() { const data = await mockApi.getIndices(); return `<h3 class="text-lg font-bold mb-4 border-b pb-2">금 시세</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span>1kg</span><span class="font-bold">${formatCurrency(data.gold.price1kg)}</span></div><div class="flex justify-between"><span>100g</span><span class="font-bold">${formatCurrency(data.gold.price100g)}</span></div></div>`;}
+        async function renderOilWidget() { const data = await mockApi.getIndices(); return `<h3 class="text-lg font-bold mb-4 border-b pb-2">국내 유가 (L)</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span>휘발유</span><span class="font-bold">${formatCurrency(data.oil.gasoline)}</span></div><div class="flex justify-between"><span>경유</span><span class="font-bold">${formatCurrency(data.oil.diesel)}</span></div><div class="flex justify-between"><span>등유</span><span class="font-bold">${formatCurrency(data.oil.kerosene)}</span></div></div>`;}
+        function renderKospiChartWidget(){ return `<div class="flex justify-between items-center mb-4"><h3 class="text-lg font-bold">KOSPI</h3><div class="flex space-x-1 text-xs"><button data-days="30" class="kospi-chart-period-btn px-2 py-1 rounded bg-blue-600 text-white">1개월</button><button data-days="180" class="kospi-chart-period-btn px-2 py-1 rounded bg-gray-200">6개월</button><button data-days="365" class="kospi-chart-period-btn px-2 py-1 rounded bg-gray-200">1년</button></div></div><div class="h-48"><div id="home-kospi-chart"></div></div>`; }
+        function renderTopVolumeWidget() { const stocks = [...state.kospiStocks].sort((a,b)=>b.volume-a.volume).slice(0,5); return `<h3 class="text-lg font-bold mb-4 border-b pb-2">거래량 상위</h3><ul class="space-y-3">${stocks.map(s => `<li data-stock-code="${s.code}" class="widget-stock-item cursor-pointer hover:bg-gray-50 p-1 rounded"><div class="flex justify-between text-sm items-center"><span class="font-medium">${s.name}</span><span class="${s.change > 0 ? 'text-red-500' : 'text-blue-500'}">${s.changeRate.toFixed(2)}%</span></div></li>`).join('')}</ul>`; }
+        async function renderFavoritesWidget() { const stocks = state.kospiStocks.filter(s => state.favorites.includes(s.code)); return `<h3 class="text-lg font-bold mb-4 border-b pb-2">즐겨찾기</h3><ul class="space-y-3">${stocks.length ? stocks.map(s => `<li data-stock-code="${s.code}" class="widget-stock-item cursor-pointer hover:bg-gray-50 p-1 rounded"><div class="flex justify-between text-sm items-center"><span class="font-medium">${s.name}</span><span class="${s.change > 0 ? 'text-red-500' : 'text-blue-500'}">${formatCurrency(s.price)}</span></div></li>`).join('') : '<li class="text-center text-gray-500 py-4">종목을 추가해주세요.</li>'}</ul>`; }
+        
+        // --- Domestic Page & Modal ---
+        function renderDomesticPage(container) { container.innerHTML = `<h1 class="text-3xl font-bold mb-1">국내 증시</h1><p class="text-gray-500 mb-6">KOSPI 종목의 현재 시세를 확인하세요.</p><div class="mb-4"><input type="text" id="stock-search" placeholder="종목명 또는 코드를 검색하세요..." class="w-full px-4 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div><div class="bg-white rounded-lg shadow-md overflow-x-auto"><table class="w-full text-left"><thead class="bg-gray-50"><tr><th class="p-4 w-12"></th><th class="p-4 font-semibold cursor-pointer sortable-header" data-sort-key="name">종목명</th><th class="p-4 font-semibold text-right cursor-pointer sortable-header" data-sort-key="price">현재가</th><th class="p-4 font-semibold text-right cursor-pointer sortable-header" data-sort-key="changeRate">등락률</th><th class="p-4 font-semibold text-right cursor-pointer sortable-header" data-sort-key="volume">거래량</th></tr></thead><tbody id="stock-list-body"></tbody></table></div>`; renderStockList(state.kospiStocks); }
+        function renderStockList(stocks) { const listBody=document.getElementById('stock-list-body'); if(!listBody)return; const sortedStocks=[...stocks].sort((a,b)=>{const{key,order}=state.domesticSort;if(a[key]<b[key])return order==='asc'?-1:1;if(a[key]>b[key])return order==='asc'?1:-1;return 0}); document.querySelectorAll('.sortable-header').forEach(h=>{h.innerHTML=h.innerHTML.replace(/ [▲▼]$/,'');if(h.dataset.sortKey===state.domesticSort.key)h.innerHTML+=state.domesticSort.order==='asc'?' ▲':' ▼'}); if(sortedStocks.length===0){listBody.innerHTML='<tr><td colspan="5" class="text-center p-8 text-gray-500">검색 결과가 없습니다.</td></tr>';return} listBody.innerHTML=sortedStocks.map(s=>{const isFavorite=state.favorites.includes(s.code);const color=s.change>0?'text-red-500':s.change<0?'text-blue-500':'text-gray-800';const sign=s.change>0?'+':'';return`<tr class="stock-row hover:bg-gray-50 border-b last:border-b-0" data-stock-code="${s.code}"><td class="p-4"><button class="toggle-favorite-btn text-2xl z-10 relative" data-stock-code="${s.code}">${isFavorite?'<span class="text-yellow-400">★</span>':'<span class="text-gray-300">☆</span>'}</button></td><td class="p-4 font-medium"><div class="text-gray-900">${s.name}</div><div class="text-sm text-gray-400">${s.code}</div></td><td class="p-4 text-right font-semibold ${color}">${formatCurrency(s.price)}</td><td class="p-4 text-right ${color}">${sign}${s.changeRate.toFixed(2)}%</td><td class="p-4 text-right text-sm text-gray-600">${s.volume.toLocaleString()}</td></tr>`}).join('')}
+
+        async function renderStockDetailModal(stockCode) {
+            const stock = state.kospiStocks.find(s => s.code === stockCode);
+            const modalHTML = `
+            <div id="stock-detail-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+                <div class="bg-white rounded-lg shadow-2xl p-6 max-w-4xl w-full transform transition-all scale-95 opacity-0">
+                    <div class="flex justify-between items-center border-b pb-3 mb-4">
+                        <h2 class="text-2xl font-bold">${stock.name} <span class="text-gray-500 font-normal text-lg">(${stock.code})</span></h2>
+                        <button id="close-detail-modal" class="text-3xl text-gray-400 hover:text-gray-800">&times;</button>
+                    </div>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-2">
+                        <div id="indicator-controls">
+                            <div class="flex items-center gap-2 mb-2">
+                                <h4 class="text-sm font-semibold">보조지표</h4>
+                                <div class="tooltip-container">
+                                    <span class="cursor-pointer text-blue-500">${icons.info}</span>
+                                    <span class="tooltip-text">차트에 기술적 분석 지표를 추가합니다. 이동평균선(SMA)은 특정 기간 동안의 평균 주가를 선으로 나타내어 추세를 파악하는 데 도움을 줍니다.</span>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2 text-xs">
+                                <button class="indicator-toggle-btn px-3 py-1 rounded-full" data-indicator="sma20">SMA 20</button>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2 text-xs">
+                            <button class="detail-chart-type-btn px-3 py-1 rounded-full" data-type="candlestick">캔들차트</button>
+                            <button class="detail-chart-type-btn px-3 py-1 rounded-full" data-type="line">선차트</button>
+                        </div>
+                    </div>
+                    <div class="chart-container mb-4"><div id="detail-chart"></div></div>
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <p class="mb-3 text-gray-700">더 상세한 AI 분석과 기술적 지표를 확인해보세요.</p>
+                        <button id="go-to-ai-page-from-modal" data-stock-code="${stockCode}" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 font-semibold btn-active">AI 분석 페이지로 이동</button>
+                    </div>
+                </div>
+            </div>`;
+            modalContainer.innerHTML = modalHTML;
+            const modalContent = modalContainer.querySelector('#stock-detail-modal > div');
+            setTimeout(() => { modalContent.style.transform = 'scale(1)'; modalContent.style.opacity = '1'; }, 50);
+            
+            await updateDetailChart(stockCode);
+        }
+
+        // --- Other Pages ---
+        async function renderAiAnalysisPage(container) {
+            const selectedCode = state.currentParams?.stockCode;
+            container.innerHTML=`
+            <h1 class="text-3xl font-bold mb-1">AI 분석</h1>
+            <p class="text-gray-500 mb-6">AI가 예측한 미래 주가를 통해 투자 인사이트를 얻어보세요.</p>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 space-y-6">
+                     <div class="bg-white p-4 rounded-lg shadow-md">
+                         <label for="ai-stock-search" class="block text-sm font-medium mb-2">분석할 종목 검색:</label>
+                         <div class="relative">
+                             <input type="search" id="ai-stock-search" placeholder="종목명 또는 코드를 검색하세요..." class="w-full p-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                             <div id="ai-search-results" class="absolute mt-1 w-full bg-white border rounded-md shadow-lg z-20 max-h-48 overflow-y-auto"></div>
+                         </div>
+                    </div>
+                    <div id="ai-chart-area" class="bg-white p-4 sm:p-6 rounded-lg shadow-md min-h-[500px]">
+                        ${!selectedCode ? `<div class="flex items-center justify-center h-full text-gray-500">분석할 종목을 검색하거나 선택해주세요.</div>` : ''}
+                    </div>
+                </div>
+                <div id="ai-recommendations-panel" class="bg-white p-6 rounded-lg shadow-md h-fit"></div>
+            </div>`;
+            if(selectedCode){
+                document.getElementById('ai-stock-search').value = state.kospiStocks.find(s=>s.code===selectedCode)?.name || '';
+                updateAiChart(selectedCode);
+            } 
+            renderAiRecommendations();
+        }
+        
+        async function renderAiRecommendations() {
+            const panel=document.getElementById('ai-recommendations-panel');
+            if(!panel) return;
+            const recommendations=await mockApi.getAiRecommendations();
+            panel.innerHTML=`
+            <h3 class="text-lg font-bold mb-4 border-b pb-2 flex items-center">AI 매매 신호
+                <div class="tooltip-container ml-2">
+                    <span class="cursor-pointer text-blue-500">${icons.info}</span>
+                    <span class="tooltip-text">AI 모델이 과거 주가 패턴을 학습하여 향후 추세를 예측합니다. '매수'는 상승, '매도'는 하락 확률이 높음을 의미하며, 실제 수익을 보장하지 않습니다.</span>
+                </div>
+            </h3>
+            <div class="space-y-4">${recommendations.map(r=>`<div class="p-3 rounded-lg bg-gray-50"><div class="flex justify-between items-center"><p class="font-semibold">${r.name}</p><span class="text-xs font-bold px-2 py-1 rounded-full ${{'매수':'bg-red-100 text-red-800','매도':'bg-blue-100 text-blue-800','보유':'bg-gray-100 text-gray-800'}[r.signal]}">${r.signal}</span></div><div class="text-sm mt-2 text-gray-600"><p>신뢰도: ${(r.confidence*100).toFixed(0)}%</p><p>목표가: ${formatCurrency(r.targetPrice)}</p></div></div>`).join('')}</div>`;
+        }
+        
+        async function renderMarketPage(container){
+            const data = await mockApi.getIndices();
+            container.innerHTML=`
+            <h1 class="text-3xl font-bold mb-1">시장 지표</h1>
+            <p class="text-gray-500 mb-6">주요 시장 지표의 상세 정보를 확인하세요.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-bold mb-4">금 시세</h3>
+                    <div class="space-y-3 text-lg">
+                       <div class="flex justify-between items-baseline border-b pb-3"><span class="text-gray-600">1kg</span><span class="font-bold text-2xl">${formatCurrency(data.gold.price1kg)}</span></div>
+                       <div class="flex justify-between items-baseline"><span class="text-gray-600">100g</span><span class="font-bold text-2xl">${formatCurrency(data.gold.price100g)}</span></div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                     <h3 class="text-xl font-bold mb-4">국내 유가 (L)</h3>
+                     <div class="space-y-3 text-lg">
+                         <div class="flex justify-between items-baseline border-b pb-3"><span class="text-gray-600">휘발유</span><span class="font-bold text-2xl">${formatCurrency(data.oil.gasoline)}</span></div>
+                         <div class="flex justify-between items-baseline border-b pb-3"><span class="text-gray-600">경유</span><span class="font-bold text-2xl">${formatCurrency(data.oil.diesel)}</span></div>
+                         <div class="flex justify-between items-baseline"><span class="text-gray-600">등유</span><span class="font-bold text-2xl">${formatCurrency(data.oil.kerosene)}</span></div>
+                    </div>
+                </div>
+            </div>`;
+        }
+        
+        function renderMyPage(container) {
+            const favoriteStocks = state.kospiStocks.filter(stock => state.favorites.includes(stock.code));
+            container.innerHTML=`
+            <h1 class="text-3xl font-bold mb-1">MY</h1>
+            <p class="text-gray-500 mb-6">계정 정보를 관리하고 즐겨찾기 종목을 편집할 수 있습니다.</p>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-bold mb-4 border-b pb-2">계정 정보</h3>
+                    <div class="space-y-4">
+                        <p><strong class="text-gray-600 w-20 inline-block">아이디:</strong> ${state.currentUser.username}</p>
+                        <p><strong class="text-gray-600 w-20 inline-block">이메일:</strong> ${state.currentUser.email}</p>
+                        <div class="pt-4 flex flex-col sm:flex-row gap-3">
+                            <button id="save-info-btn" class="w-full text-white bg-blue-600 hover:bg-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center btn-active">정보 저장</button>
+                            <button type="button" id="delete-account-btn" class="w-full text-red-600 border border-red-600 hover:bg-red-600 hover:text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors btn-active">회원 탈퇴</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-bold mb-4 border-b pb-2">즐겨찾기 목록 (${favoriteStocks.length})</h3>
+                    <ul id="my-favorites-list" class="divide-y max-h-96 overflow-y-auto">
+                        ${favoriteStocks.length > 0 ? favoriteStocks.map(stock => `<li class="flex justify-between items-center py-3"><div><p class="font-medium">${stock.name}</p><p class="text-sm text-gray-400">${stock.code}</p></div><button data-stock-code="${stock.code}" class="my-remove-favorite-btn px-3 py-1 text-xs font-medium text-red-600 bg-red-100 rounded-full hover:bg-red-200">삭제</button></li>`).join('') : '<li class="text-center text-gray-500 py-8">즐겨찾는 종목이 없습니다.</li>'}
+                    </ul>
+                </div>
+            </div>`;
+        }
+
+        // --- CHART RENDERING FUNCTIONS (using ApexCharts) ---
+        async function updateDetailChart(stockCode) {
+            const { historicalData } = await mockApi.getStockChartData(stockCode);
+            if(state.charts.detail) state.charts.detail.destroy();
+
+            // 차트 타입 버튼 스타일 업데이트
+            document.querySelectorAll('.detail-chart-type-btn').forEach(btn => {
+                const isActive = btn.dataset.type === state.detailChartType;
+                btn.classList.toggle('bg-blue-600', isActive);
+                btn.classList.toggle('text-white', isActive);
+                btn.classList.toggle('bg-gray-200', !isActive);
+            });
+            // 보조지표 버튼 스타일 업데이트
+            document.querySelectorAll('.indicator-toggle-btn').forEach(btn => {
+                const indicator = btn.dataset.indicator;
+                const isActive = state.detailIndicators[indicator];
+                btn.classList.toggle('bg-blue-600', isActive);
+                btn.classList.toggle('text-white', isActive);
+                btn.classList.toggle('bg-gray-200', !isActive);
+            });
+            
+            const chartData = historicalData.map(d => ({ x: new Date(d.t), y: [d.o, d.h, d.l, d.c] }));
+            const lineData = historicalData.map(d => ({ x: new Date(d.t), y: d.c }));
+            
+            const series = [];
+            if (state.detailChartType === 'candlestick') {
+                series.push({ name: '주가', type: 'candlestick', data: chartData });
+            } else {
+                series.push({ name: '종가', type: 'line', data: lineData });
+            }
+            
+            // 보조지표가 활성화 상태이면 시리즈에 추가
+            if (state.detailIndicators.sma20) {
+                const sma20 = calculateSMA(chartData, 20);
+                series.push({ name: 'SMA 20', type: 'line', data: sma20, color: '#f59e0b' });
+            }
+
+            const options = {
+                series: series,
+                chart: { type: 'line', height: '100%', toolbar: { show: true, tools: { download: false, pan: true, zoom: true, zoomin: true, zoomout: true, reset: true } } },
+                title: { text: '과거 주가', align: 'left' },
+                stroke: { width: [1, 2], curve: 'smooth' },
+                xaxis: { type: 'datetime' },
+                yaxis: { tooltip: { enabled: true }, labels: { formatter: (val) => formatCurrency(val) } },
+                plotOptions: { candlestick: { colors: { upward: '#ef4444', downward: '#3b82f6' } } },
+                tooltip: {
+                     shared: true,
+                     custom: function({series, seriesIndex, dataPointIndex, w}) {
+                         const pointData = w.globals.initialSeries[0].data[dataPointIndex];
+                         let tooltipHtml = `<div class="p-2"><strong>${formatKoreanDate(pointData.x)}</strong><br/>`;
+
+                         if (state.detailChartType === 'candlestick') {
+                             const [o, h, l, c] = pointData.y;
+                             tooltipHtml += `시: ${formatCurrency(o)}<br/>고: ${formatCurrency(h)}<br/>저: ${formatCurrency(l)}<br/>종: ${formatCurrency(c)}<br/>`;
+                         } else {
+                             tooltipHtml += `종가: ${formatCurrency(pointData.y)}<br/>`;
+                         }
+                         
+                         // 보조지표 툴팁 정보 추가
+                         w.globals.initialSeries.forEach((s, idx) => {
+                             if (idx > 0 && s.data[dataPointIndex]?.y) {
+                                 tooltipHtml += `${s.name}: ${formatCurrency(s.data[dataPointIndex].y)}<br/>`;
+                             }
+                         });
+                         
+                         return tooltipHtml + '</div>';
+                     }
+                },
+                legend: {
+                    show: series.length > 1, // 시리즈가 2개 이상일 때만 범례 표시
+                    horizontalAlign: 'left',
+                }
+            };
+            
+            state.charts.detail = new ApexCharts(document.querySelector("#detail-chart"), options);
+            state.charts.detail.render();
+        }
+        
+        async function updateKospiChart(days) { 
+            const data = await mockApi.getKospiHistory(days); 
+            const chartData = data.map(d => ({x: d.time, y: d.value}));
+            const el = document.getElementById('home-kospi-chart');
+            if(!el) return;
+            document.querySelectorAll('.kospi-chart-period-btn').forEach(btn => { const isSelected = parseInt(btn.dataset.days) === days; btn.classList.toggle('bg-blue-600', isSelected); btn.classList.toggle('text-white', isSelected); btn.classList.toggle('bg-gray-200', !isSelected); });
+            if(state.charts.kospiHome) state.charts.kospiHome.destroy(); 
+            
+            const options = {
+                series: [{ name: 'KOSPI', data: chartData }],
+                chart: { type: 'area', height: '100%', sparkline: { enabled: true } },
+                stroke: { curve: 'smooth', width: 2 },
+                fill: { type: 'gradient', gradient: { opacityFrom: 0.4, opacityTo: 0, stops: [0, 100] } },
+                colors: ['#0d6efd'],
+                tooltip: { x: { format: 'yyyy.MM.dd' }, y: { formatter: (val) => val.toFixed(2) } }
+            };
+
+            state.charts.kospiHome = new ApexCharts(el, options);
+            state.charts.kospiHome.render();
+        }
+
+        async function updateAiChart(stockCode) {
+            const chartArea = document.getElementById('ai-chart-area');
+            if (!chartArea) return;
+            const stockName = state.kospiStocks.find(s => s.code === stockCode)?.name || '';
+            chartArea.innerHTML = `<h3 class="text-xl font-bold mb-4">${stockName} AI 예측</h3><div class="chart-container"><div id="ai-chart"></div></div>`;
+
+            const { historicalData, predictionData } = await mockApi.getStockChartData(stockCode);
+            if (state.charts.ai) state.charts.ai.destroy();
+            
+            const historicalChartData = historicalData.map(d => ({ x: new Date(d.t), y: [d.o, d.h, d.l, d.c] }));
+            const predictionChartData = predictionData.map(d => ({ x: new Date(d.time), y: d.value }));
+
+            const lastHistoricalPoint = historicalData[historicalData.length-1];
+            const seamlessPredictionData = [{ x: new Date(lastHistoricalPoint.t), y: lastHistoricalPoint.c }, ...predictionChartData];
+
+            const options = {
+                series: [
+                    { name: '과거 주가', type: 'candlestick', data: historicalChartData },
+                    { name: 'AI 예측', type: 'line', data: seamlessPredictionData }
+                ],
+                chart: { type: 'line', height: '100%', toolbar: { show: true, tools: { download: false } } },
+                stroke: { width: [1, 3], curve: 'smooth', dashArray: [0, 8] },
+                markers: { size: 0 },
+                title: { text: `과거 주가 및 30일 AI 예측`, align: 'left' },
+                xaxis: { type: 'datetime', tooltip: { enabled: false } },
+                yaxis: { labels: { formatter: (val) => formatCurrency(val) } },
+                plotOptions: { candlestick: { colors: { upward: '#ef4444', downward: '#3b82f6' } } },
+                colors: ['#000000', '#ff7b00'],
+                legend: { position: 'top', horizontalAlign: 'left' }
+            };
+            
+            state.charts.ai = new ApexCharts(document.querySelector("#ai-chart"), options);
+            state.charts.ai.render();
+        }
+
+        // ===================================================================================
+        // EVENT HANDLERS & LOGIC
+        // ===================================================================================
+        function setupEventListeners() {
+            document.body.addEventListener('click', handleClicks);
+            document.body.addEventListener('submit', handleSubmits);
+            document.body.addEventListener('change', handleChanges);
+            document.body.addEventListener('input', handleInputs);
+            document.body.addEventListener('dragstart', e => { if(e.target.classList.contains('widget')) { state.draggedWidgetId = e.target.id; e.target.classList.add('dragging'); } });
+            document.body.addEventListener('dragover', e => { if(state.draggedWidgetId) { e.preventDefault(); const target = e.target.closest('.widget'); if(target && target.id !== state.draggedWidgetId) target.classList.add('drag-over'); } });
+            document.body.addEventListener('dragleave', e => { e.target.closest('.widget')?.classList.remove('drag-over'); });
+            document.body.addEventListener('drop', handleDrop);
+            document.body.addEventListener('dragend', () => { state.draggedWidgetId = null; document.querySelectorAll('.widget').forEach(w => w.classList.remove('dragging', 'drag-over')); });
+        }
+
+        function handleClicks(e) {
+            const navLink = e.target.closest('.nav-link');
+            if (navLink) { e.preventDefault(); navigate(navLink.dataset.page); }
+            if (e.target.closest('#logout-btn')) handleLogout();
+            if (e.target.closest('#modal-tour-btn')) { closeModal(); startTutorial(); }
+            if (e.target.closest('#modal-skip-btn') || e.target.closest('#close-detail-modal')) closeModal();
+            if (e.target.closest('#go-to-ai-page-from-modal')) { navigate('ai', { stockCode: e.target.closest('#go-to-ai-page-from-modal').dataset.stockCode }); closeModal(); }
+            
+            const stockRow = e.target.closest('.stock-row');
+            if (stockRow && !e.target.closest('.toggle-favorite-btn')) renderStockDetailModal(stockRow.dataset.stockCode);
+            
+            if (e.target.closest('.toggle-favorite-btn, .my-remove-favorite-btn')) { e.stopPropagation(); toggleFavorite(e.target.closest('[data-stock-code]').dataset.stockCode); }
+            if (e.target.closest('.sortable-header')) handleSort(e.target.closest('.sortable-header').dataset.sortKey);
+            if (e.target.closest('#delete-account-btn')) if(confirm("정말로 회원 탈퇴를 하시겠습니까?")) handleLogout();
+            
+            // Widget Controls
+            if (e.target.closest('#widget-edit-toggle')) toggleWidgetEditMode();
+            if (e.target.closest('.remove-widget-btn')) removeWidget(e.target.dataset.widgetId);
+            if (e.target.closest('.add-widget-btn')) addWidget(e.target.dataset.widgetType);
+            const widgetStock = e.target.closest('.widget-stock-item');
+            if(widgetStock && !state.isWidgetEditMode) renderStockDetailModal(widgetStock.dataset.stockCode);
+            if(e.target.closest('.kospi-chart-period-btn')) updateKospiChart(parseInt(e.target.closest('.kospi-chart-period-btn').dataset.days));
+            
+            // AI Page Search
+            const aiSearchResult = e.target.closest('.ai-search-result-item');
+            if (aiSearchResult) {
+                const code = aiSearchResult.dataset.stockCode;
+                state.currentParams = { stockCode: code };
+                updateAiChart(code);
+                document.getElementById('ai-stock-search').value = aiSearchResult.textContent.split('(')[0].trim();
+                document.getElementById('ai-search-results').innerHTML = '';
+            } else if (!e.target.closest('#ai-search-results') && document.getElementById('ai-search-results')) {
+                document.getElementById('ai-search-results').innerHTML = '';
+            }
+
+            // Chart Control Toggles
+            if(e.target.closest('.detail-chart-type-btn')) {
+                state.detailChartType = e.target.closest('.detail-chart-type-btn').dataset.type;
+                const stockCode = document.getElementById('go-to-ai-page-from-modal').dataset.stockCode;
+                updateDetailChart(stockCode);
+            }
+            if(e.target.closest('.indicator-toggle-btn')) {
+                const indicator = e.target.closest('.indicator-toggle-btn').dataset.indicator;
+                state.detailIndicators[indicator] = !state.detailIndicators[indicator]; // 상태 토글
+                const stockCode = document.getElementById('go-to-ai-page-from-modal').dataset.stockCode;
+                updateDetailChart(stockCode);
+            }
+            if (e.target.closest('#password-toggle')) {
+                const passwordInput = document.getElementById('password');
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                e.target.closest('#password-toggle').innerHTML = isPassword ? icons.eyeClosed : icons.eyeOpen;
+            }
+        }
+
+        function handleSubmits(e) {
+            e.preventDefault();
+            if (e.target.id === 'login-form') handleLogin(e.target);
+        }
+        
+        function handleChanges(e) {
+            if (e.target.id === 'modal-dont-show-again' && e.target.checked) localStorage.setItem('nextstep-tutorial-completed', 'true');
+        }
+
+        function handleInputs(e) {
+            if (e.target.id === 'stock-search') {
+                const searchTerm = e.target.value.toLowerCase();
+                renderStockList(state.kospiStocks.filter(s => s.name.toLowerCase().includes(searchTerm) || s.code.includes(searchTerm)));
+            }
+            if (e.target.id === 'ai-stock-search') {
+                const searchTerm = e.target.value.toLowerCase();
+                const resultsContainer = document.getElementById('ai-search-results');
+                if(!searchTerm) { resultsContainer.innerHTML = ''; return; }
+                const filtered = state.kospiStocks.filter(s => s.name.toLowerCase().includes(searchTerm) || s.code.includes(searchTerm)).slice(0, 5);
+                resultsContainer.innerHTML = filtered.length > 0 ? filtered.map(s => `<div class="ai-search-result-item p-2 hover:bg-gray-100 cursor-pointer" data-stock-code="${s.code}">${s.name} (${s.code})</div>`).join('') : `<div class="p-2 text-sm text-gray-500">검색 결과가 없습니다.</div>`;
+            }
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            const targetWidget = e.target.closest('.widget');
+            if (!targetWidget || targetWidget.id === state.draggedWidgetId) return;
+            
+            const draggedIndex = state.widgets.findIndex(w => w.id === state.draggedWidgetId);
+            const grid = document.getElementById('widget-grid');
+            const targetIndex = Array.from(grid.children).indexOf(targetWidget);
+            
+            const [draggedItem] = state.widgets.splice(draggedIndex, 1);
+            state.widgets.splice(targetIndex, 0, draggedItem);
+            
+            localStorage.setItem('nextstep-widgets', JSON.stringify(state.widgets));
+            renderWidgets();
+        }
+
+        // --- Core Logic Functions ---
+        function navigate(page, params = null) { state.currentPage = page; state.currentParams = params; renderPage(); }
+        async function handleLogin(form) {
+            try {
+                const { accessToken, user } = await mockApi.login(form.username.value, form.password.value);
+                state.isLoggedIn = true;
+                state.currentUser = user;
+                localStorage.setItem('nextstep-token', accessToken);
+                localStorage.setItem('nextstep-user', JSON.stringify(user));
+                initializeApp();
+            } catch (err) { renderLoginPage(err.message); }
+        }
+        function handleLogout() {
+            state.isLoggedIn = false;
+            state.currentUser = null;
+            localStorage.clear();
+            sessionStorage.clear();
+            renderApp();
+        }
+        function toggleFavorite(stockCode) { const index = state.favorites.indexOf(stockCode); if (index > -1) state.favorites.splice(index, 1); else state.favorites.push(stockCode); localStorage.setItem('nextstep-favorites', JSON.stringify(state.favorites)); if(document.querySelector('.page-content')) renderPage(); }
+        function handleSort(key){ if (state.domesticSort.key === key) { state.domesticSort.order = state.domesticSort.order === 'asc' ? 'desc' : 'asc'; } else { state.domesticSort.key = key; state.domesticSort.order = 'desc'; } const searchTerm = document.getElementById('stock-search')?.value.toLowerCase() || ''; const filteredStocks = state.kospiStocks.filter(s => s.name.toLowerCase().includes(searchTerm) || s.code.includes(searchTerm)); renderStockList(filteredStocks); }
+        function toggleWidgetEditMode() { state.isWidgetEditMode = !state.isWidgetEditMode; renderHomePage(document.querySelector('.page-content')); }
+        function removeWidget(widgetId) { state.widgets = state.widgets.filter(w => w.id !== widgetId); localStorage.setItem('nextstep-widgets', JSON.stringify(state.widgets)); renderHomePage(document.querySelector('.page-content')); }
+        function addWidget(widgetType) {
+            const widgetSizes = {'indices':'md:col-span-2', 'kospiChart': 'md:col-span-2', 'topVolume':'md:col-span-1', 'favorites': 'md:col-span-1', 'gold':'md:col-span-1', 'oil':'md:col-span-1'};
+            if (!state.widgets.some(w => w.type === widgetType)) { 
+                state.widgets.push({ id: `widget-${Date.now()}`, type: widgetType, size: widgetSizes[widgetType] });
+                localStorage.setItem('nextstep-widgets', JSON.stringify(state.widgets)); 
+                renderHomePage(document.querySelector('.page-content')); 
+            }
+        }
+        function closeModal() { modalContainer.innerHTML = ''; }
+
+        // --- INTERACTIVE TUTORIAL (오류 수정) ---
+        const tutorialSteps = [
+             { selector: '[data-page="domestic"]', text: "먼저, '국내' 탭을 클릭해서 국내 주식 시세를 확인해볼까요?", action: 'click' },
+             { selector: '.stock-row[data-stock-code="TUTORIAL01"]', text: "좋아요! 예시 종목인 '넥스트스텝'이 보이네요. 이 종목을 클릭해서 상세 정보를 확인해봅시다.", action: 'click'},
+             { selector: '.detail-chart-type-btn[data-type="line"]', text: "이곳이 상세 정보 화면입니다. 캔들차트가 기본으로 표시돼요. '선차트' 버튼을 눌러 차트 종류를 바꿔보세요.", action: 'click'},
+             { selector: '#go-to-ai-page-from-modal', text: "차트가 바뀌었네요. 이제 이 종목의 미래가 궁금하지 않나요? 'AI 분석 페이지로 이동' 버튼을 눌러보세요!", action: 'click'},
+             // --- 수정: mouseover를 click으로 변경하고 안내 문구 수정 ---
+             { selector: '#ai-chart-area', text: "AI 분석 페이지입니다! 과거 주가와 미래 예측을 볼 수 있습니다. 차트 영역을 '클릭'하여 다음으로 진행하세요.", action: 'click'},
+             { selector: '[data-page="home"]', text: "마지막으로 홈 화면으로 돌아가 나만의 대시보드를 꾸며볼게요. '홈' 탭을 클릭하세요.", action: 'click'},
+             { selector: '#widget-edit-toggle', text: "홈 대시보드입니다. '위젯 편집' 버튼을 눌러 편집 모드를 활성화하세요.", action: 'click'},
+             // --- 수정: drop을 dragstart로 변경하고 안내 문구 수정 ---
+             { selector: '.widget[data-widget-type="favorites"]', text: "좋습니다! 이제 즐겨찾기 위젯을 클릭한 채로 '드래그를 시작'해보세요.", action: 'dragstart'},
+             { selector: '#widget-edit-toggle', text: "잘하셨어요! 원하는 대로 위젯을 배치하고 '완료' 버튼을 누르면 저장됩니다. 이것으로 가이드를 마칩니다. 성공적인 투자를 기원합니다!", action: 'click'},
+        ];
+
+        function startTutorial() {
+            state.tutorial.isActive = true;
+            state.tutorial.step = 0;
+            renderTutorialPage(); // 튜토리얼을 위한 새 페이지(오버레이) 생성
+            renderTutorialStep();
+        }
+        
+        function renderTutorialPage() {
+            const tutorialContainer = document.getElementById('tutorial-container');
+            tutorialContainer.innerHTML = `<div id="tutorial-page" class="tutorial-overlay"></div>`;
+        }
+
+        async function renderTutorialStep() {
+            const step = tutorialSteps[state.tutorial.step];
+            if (!step) { endTutorial(); return; }
+
+            const targetPage = step.selector.startsWith('[data-page=') ? step.selector.match(/data-page="([^"]+)"/)[1] : null;
+            if (targetPage && state.currentPage !== targetPage) {
+                navigate(targetPage);
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            if (step.selector.includes('TUTORIAL01')) {
+                state.kospiStocks = await mockApi.getKospiStocks(true);
+                if(state.currentPage === 'domestic') renderStockList(state.kospiStocks);
+            }
+            if (step.selector.includes('#go-to-ai-page-from-modal')){
+                if(!document.getElementById('stock-detail-modal')){
+                   await renderStockDetailModal('TUTORIAL01');
+                }
+            } else if (document.getElementById('stock-detail-modal') && !step.selector.startsWith('.')) {
+                closeModal();
+            }
+
+            const targetElement = document.querySelector(step.selector);
+            if (!targetElement) { console.error("Tutorial target not found:", step.selector); endTutorial(); return; }
+
+            document.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
+            targetElement.classList.add('tutorial-highlight');
+            targetElement.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            
+            const targetRect = targetElement.getBoundingClientRect();
+            const tutorialPage = document.getElementById('tutorial-page');
+            if(!tutorialPage) return;
+            
+            // 튜토리얼 안내창 렌더링 (내용만 임시로)
+            tutorialPage.innerHTML = `<div class="tutorial-modal-content absolute bg-white rounded-lg shadow-xl p-5 max-w-sm" style="opacity:0;">${step.text}</div>`;
+            const modalContent = tutorialPage.querySelector('.tutorial-modal-content');
+            
+            // --- 수정: 튜토리얼 안내창 위치 자동 조정 로직 개선 ---
+            await new Promise(resolve => setTimeout(resolve, 50)); // modalContent가 렌더링되어 크기를 가질 때까지 잠시 대기
+            const modalRect = modalContent.getBoundingClientRect();
+            
+            let topPos = targetRect.bottom + 15; // 기본 위치: 요소 아래
+            // 요소 아래 공간이 부족하고 & 요소 위에 공간이 충분할 때만 위로 이동
+            if ((topPos + modalRect.height > window.innerHeight) && (targetRect.top > modalRect.height + 15)) {
+                topPos = targetRect.top - modalRect.height - 15;
+            }
+            let leftPos = targetRect.left;
+            if (leftPos + modalRect.width > window.innerWidth) {
+                leftPos = window.innerWidth - modalRect.width - 15;
+            }
+
+            modalContent.style.top = `${topPos}px`;
+            modalContent.style.left = `${leftPos}px`;
+            modalContent.style.opacity = '1';
+
+            // 최종 HTML 렌더링
+            modalContent.innerHTML = `
+                <p class="text-gray-800">${step.text}</p>
+                <div class="flex justify-between items-center mt-4">
+                    <span class="text-sm font-bold text-gray-500">${state.tutorial.step + 1} / ${tutorialSteps.length}</span>
+                    <button id="end-tutorial-btn" class="text-xs text-gray-500 hover:text-black">가이드 종료</button>
+                </div>`;
+            
+            const actionHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if(step.action === 'click'){
+                    targetElement.click();
+                }
+
+                setTimeout(() => {
+                    targetElement.removeEventListener(step.action, actionHandler, true);
+                    advanceTutorial();
+                }, 300); 
+            };
+            
+            targetElement.addEventListener(step.action, actionHandler, { once: true, capture: true });
+        }
+
+        function advanceTutorial() {
+            if(!state.tutorial.isActive) return;
+            const highlighted = document.querySelector('.tutorial-highlight');
+            if (highlighted) highlighted.classList.remove('tutorial-highlight');
+            
+            state.tutorial.step++;
+            renderTutorialStep();
+        }
+
+        function endTutorial() {
+            state.tutorial.isActive = false;
+            document.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
+            document.getElementById('tutorial-container').innerHTML = '';
+            localStorage.setItem('nextstep-tutorial-completed', 'true');
+            
+            mockApi.getKospiStocks().then(stocks => {
+                state.kospiStocks = stocks;
+                if (state.currentPage === 'domestic') {
+                    renderStockList(stocks);
+                } else if(state.currentPage === 'ai' && state.currentParams?.stockCode === 'TUTORIAL01') {
+                    navigate('ai'); 
+                }
+            });
+            if(document.getElementById('stock-detail-modal')) closeModal();
+        }
+        
+        document.body.addEventListener('click', e => {
+            if (e.target.closest('#end-tutorial-btn')) {
+                e.stopPropagation();
+                endTutorial();
+            }
+        });
+        
+        // ===================================================================================
+        // INITIALIZATION
+        // ===================================================================================
+        async function initializeApp() {
+            setupEventListeners();
+            
+            if (state.isLoggedIn) {
+                state.kospiStocks = await mockApi.getKospiStocks();
+            }
+            
+            renderApp();
+        }
+
+        initializeApp();
+    </script>
 </body>
 </html>
