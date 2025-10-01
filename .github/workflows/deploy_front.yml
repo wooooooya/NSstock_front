@@ -1,17 +1,17 @@
 # .github/workflows/deploy-frontend.yml
 
-name: Deploy Frontend to EC2
+name: Deploy Static Frontend to EC2
 
 on:
   push:
     branches:
       - main
-    # NSstock_front 폴더 내의 파일이 변경되었을 때만 이 워크플로우를 실행합니다.
     paths:
-      - 'NSstock_front/**'
+      - 'index.html'
+      - 'logo.png'
 
 jobs:
-  deploy-frontend:
+  deploy:
     runs-on: ubuntu-latest
     
     steps:
@@ -19,42 +19,13 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      # 2. Node.js 환경 설정 (프로젝트에 맞는 버전으로 수정)
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm' # npm 의존성 캐싱 설정
-          cache-dependency-path: 'NSstock_front/package-lock.json'
-
-      # 3. 프론트엔드 의존성 설치 및 빌드
-      - name: Build Frontend
-        run: |
-          cd NSstock_front
-          npm install
-          npm run build
-      
-      # 4. 빌드 결과물을 EC2 서버의 임시 경로로 전송
-      - name: Transfer Build files to EC2
+      # 2. scp를 사용해 EC2 서버의 Nginx root 경로로 직접 파일 전송
+      - name: Transfer files to EC2
         uses: appleboy/scp-action@v1.0.1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "NSstock_front/build/" # 'build' 폴더 전체를 전송
-          target: "/home/${{ secrets.EC2_USER }}/" # EC2 홈 디렉토리에 임시 저장
-
-      # 5. EC2 서버에 접속하여 최종 배포 작업 실행
-      - name: Deploy to Nginx root directory
-        uses: appleboy/ssh-action@v1.0.1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # 1. Nginx의 기존 웹 루트 디렉토리 내용을 삭제
-            sudo rm -rf /usr/share/nginx/html/*
-            # 2. 임시로 전송된 build 폴더의 내용물을 Nginx 웹 루트로 이동
-            sudo mv /home/${{ secrets.EC2_USER }}/build/* /usr/share/nginx/html/
-            # 3. 임시로 전송된 빈 build 폴더 삭제
-            rmdir /home/${{ secrets.EC2_USER }}/build/
+          source: "index.html,logo.png" # 쉼표로 여러 파일 지정
+          target: "/usr/share/nginx/html/"
+          overwrite: true # 기존 파일 덮어쓰기
