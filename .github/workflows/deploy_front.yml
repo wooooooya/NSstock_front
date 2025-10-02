@@ -14,17 +14,15 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Transfer Files (excluding .git, .github)
+      - name: Transfer Specific Files to EC2
         uses: appleboy/scp-action@v0.1.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "."
+          # --- 아래 source 부분을 수정합니다 ---
+          source: |
+            index.html
+            logo.png
           target: "/usr/share/nginx/html"
           overwrite: true
-          # --- 아래 제외 옵션 추가 ---
-          exclude: |
-            .git
-            .github
-            
