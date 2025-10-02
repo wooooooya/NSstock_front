@@ -1,36 +1,27 @@
-name: Deploy Frontend to EC2
+name: Deploy Static Frontend to EC2
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'NSstock_front/**' # 프론트엔드 폴더에 변경이 있을 때만 실행
+      - 'NSstock_front/**' # NSstock_front 폴더에 변경이 있을 때만 실행
 
 jobs:
-  deploy-frontend:
+  deploy:
     runs-on: ubuntu-latest
     steps:
+      # 1. 저장소의 모든 코드를 Runner로 가져옵니다.
       - name: Checkout Source Code
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: 'NSstock_front/package-lock.json'
-      - name: Build Frontend
-        run: |
-          cd NSstock_front
-          npm install
-          npm run build
-      - name: Transfer Build files to EC2
-        uses: appleboy/scp-action@v1.0.1
+
+      # 2. NSstock_front 폴더의 내용물을 EC2 서버 Nginx root 경로로 전송
+      - name: Transfer Static Files to EC2
+        uses: appleboy/scp-action@v0.1.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "NSstock_front/build/*" # 빌드 결과물
-          target: "/usr/share/nginx/html"   # Nginx 웹 루트 경로
-          strip_components: 2            # 경로 앞부분(NSstock_front/build/) 제거
-          overwrite: true
+          source: "NSstock_front/*"         # NSstock_front 폴더 안의 모든 파일과 폴더를 전송
+          target: "/usr/share/nginx/html"    # Nginx 웹 루트 경로
+          overwrite: true                    # 기존 파일을 모두 덮어씁니다.
