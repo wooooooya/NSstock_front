@@ -1,31 +1,36 @@
-# .github/workflows/deploy-frontend.yml
-
-name: Deploy Static Frontend to EC2
+name: Deploy Frontend to EC2
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'index.html'
-      - 'logo.png'
+      - 'NSstock_front/**' # 프론트엔드 폴더에 변경이 있을 때만 실행
 
 jobs:
-  deploy:
+  deploy-frontend:
     runs-on: ubuntu-latest
-    
     steps:
-      # 1. 소스 코드 체크아웃
       - name: Checkout Source Code
         uses: actions/checkout@v4
-
-      # 2. scp를 사용해 EC2 서버의 Nginx root 경로로 직접 파일 전송
-      - name: Transfer files to EC2
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'NSstock_front/package-lock.json'
+      - name: Build Frontend
+        run: |
+          cd NSstock_front
+          npm install
+          npm run build
+      - name: Transfer Build files to EC2
         uses: appleboy/scp-action@v1.0.1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "index.html,logo.png" # 쉼표로 여러 파일 지정
-          target: "/usr/share/nginx/html/"
-          overwrite: true # 기존 파일 덮어쓰기
+          source: "NSstock_front/build/*" # 빌드 결과물
+          target: "/usr/share/nginx/html"   # Nginx 웹 루트 경로
+          strip_components: 2            # 경로 앞부분(NSstock_front/build/) 제거
+          overwrite: true
