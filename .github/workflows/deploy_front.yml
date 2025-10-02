@@ -9,17 +9,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1. 저장소의 모든 코드를 Runner로 가져옵니다.
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      # 2. NSstock_front 폴더의 내용물을 EC2 서버 Nginx root 경로로 전송
-      - name: Transfer Static Files to EC2
+      - name: Transfer All Files to EC2
         uses: appleboy/scp-action@v0.1.5
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.EC_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "NSstock_front/*"         # NSstock_front 폴더 안의 모든 파일과 폴더를 전송
-          target: "/usr/share/nginx/html"    # Nginx 웹 루트 경로
-          overwrite: true                    # 기존 파일을 모두 덮어씁니다.
+          source: "."  
+          target: "/usr/share/nginx/html"
+          overwrite: true
