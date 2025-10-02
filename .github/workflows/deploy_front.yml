@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'NSstock_front/**' # NSstock_front 폴더에 변경이 있을 때만 실행
 
 jobs:
   deploy:
